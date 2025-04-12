@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.schemas.user import User, UserBase
+from app.schemas.user import User, UserBase, UserUpdate
 from app.db.session import get_db
 from app.dependencies import get_current_active_user
 from app.db.models import User as UserModel
@@ -20,8 +20,12 @@ def get_profile(user_id: int, db: Session = Depends(get_db), current_user: UserM
     return user
 
 @router.patch("/{user_id}", response_model=User)
-def update_profile(user_id: int, updated_data: UserBase, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_active_user)):
-    # Проверяем, имеет ли текущий пользователь доступ к редактированию запрашиваемого профиля
+def update_profile(
+    user_id: int,
+    updated_data: UserUpdate,  # заменил тут
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_active_user)
+):
     if current_user.id != user_id and current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions to edit this profile")
     
@@ -31,6 +35,7 @@ def update_profile(user_id: int, updated_data: UserBase, db: Session = Depends(g
     
     for key, value in updated_data.dict(exclude_unset=True).items():
         setattr(user, key, value)
+
     db.commit()
     db.refresh(user)
     return user

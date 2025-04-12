@@ -26,3 +26,11 @@ class Token(BaseModel):
     token_type: str
     role: str
     user_id: int
+
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    birth_date: Optional[str] = Field(None, pattern=r"^\d{2}\.\d{2}\.\d{4}$")
+    phone: Optional[str] = None
+    photo: Optional[str] = None

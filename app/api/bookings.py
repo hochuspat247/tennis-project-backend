@@ -17,7 +17,8 @@ from app.db.models import User as UserModel
 from app.db.models import Booking as BookingModel
 from datetime import datetime, time
 from zoneinfo import ZoneInfo  # Для работы с часовыми поясами (Python 3.9+)
-
+from datetime import timedelta
+from datetime import timezone
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
 def force_msk(dt: datetime) -> datetime:
@@ -39,39 +40,41 @@ def get_availability(
         parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD")
+
+    msk_tz = ZoneInfo("Europe/Moscow")
+    start_of_day = datetime.combine(parsed_date, time(0, 0), tzinfo=msk_tz)
+    end_of_day = datetime.combine(parsed_date + timedelta(days=1), time(0, 0), tzinfo=msk_tz)
+
     try:
-        # Получаем бронирования для указанного корта и даты
         bookings = (
             db.query(BookingModel)
             .options(joinedload(BookingModel.user))
             .filter(
                 BookingModel.court_id == court_id,
-                func.date(BookingModel.start_time) == parsed_date,
+                BookingModel.start_time < end_of_day,
+                BookingModel.end_time > start_of_day,
                 BookingModel.status == "active"
             )
             .all()
         )
-        print(f"Найденные бронирования для court_id={court_id}, date={date}: "
-              f"{[(b.start_time, b.end_time) for b in bookings]}")
+        print(f"📋 Найдено бронирований: {[(b.start_time, b.end_time) for b in bookings]}")
     except Exception as e:
         print(f"‼️ Ошибка при запросе к базе: {e}")
         raise HTTPException(status_code=500, detail=f"DB query failed: {str(e)}")
-    
-    start_hour = 8
-    end_hour = 22
+
     slots: List[BookingAvailability] = []
-    # Определяем московский часовой пояс
-    msk_tz = ZoneInfo("Europe/Moscow")
-    
-    for hour in range(start_hour, end_hour):
-        # Формируем слот в МСК для отображения
+    for hour in range(8, 23):
         local_start = datetime.combine(parsed_date, time(hour, 0), tzinfo=msk_tz)
-        local_end = datetime.combine(parsed_date, time(hour + 1, 0), tzinfo=msk_tz)
+        local_end = (
+            datetime.combine(parsed_date + timedelta(days=1), time(0, 0), tzinfo=msk_tz)
+            if hour == 23 else
+            datetime.combine(parsed_date, time(hour + 1, 0), tzinfo=msk_tz)
+        )
+
         slot_booked = False
         user_name = None
 
         for booking in bookings:
-            # Если время в записи наивное, считаем, что оно в МСК, иначе преобразуем в МСК
             booking_start = booking.start_time if booking.start_time.tzinfo else booking.start_time.replace(tzinfo=msk_tz)
             booking_end = booking.end_time if booking.end_time.tzinfo else booking.end_time.replace(tzinfo=msk_tz)
 
@@ -80,18 +83,17 @@ def get_availability(
                 if user.role == "admin" and booking.user:
                     try:
                         user_name = f"{booking.user.first_name} {booking.user.last_name}"
-                    except Exception as e:
-                        print(f"⚠️ Ошибка при получении имени пользователя: {e}")
+                    except Exception:
                         user_name = "Неизвестный"
                 break
 
-        slot = BookingAvailability(
+        slots.append(BookingAvailability(
             start=local_start.strftime("%H:%M"),
             end=local_end.strftime("%H:%M"),
             is_booked=slot_booked,
             name=user_name
-        )
-        slots.append(slot)
+        ))
+
     return slots
 
 @router.post("/", response_model=Booking)
@@ -116,9 +118,24 @@ def get_my_bookings(
     current_user: UserModel = Depends(get_current_active_user)
 ):
     target_user_id = user_id if user_id else current_user.id
+
     if target_user_id != current_user.id and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions to view these bookings")
-    return get_bookings_by_user(db, target_user_id)
+
+    now = datetime.now(timezone.utc)  # Используем UTC
+
+    # Получаем только будущие активные брони
+    bookings = (
+        db.query(BookingModel)
+        .filter(
+            BookingModel.user_id == target_user_id,
+            BookingModel.end_time > now,
+            BookingModel.status == "active"
+        )
+        .all()
+    )
+
+    return [Booking.from_orm(b) for b in bookings]
 
 @router.get("/all", response_model=List[Booking])
 def get_all_bookings_admin(
