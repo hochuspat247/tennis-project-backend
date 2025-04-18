@@ -1,10 +1,12 @@
 from sqlalchemy.orm import Session
 from app.db.models import User
 from app.schemas.user import UserCreate
-from app.core.security import get_password_hash, verify_password, create_access_token
+from app.core.security import get_password_hash, verify_password, create_access_token, decode_access_token
 from random import randint
+from fastapi import HTTPException
+from app.utils.sms import send_sms
 
-def create_user(db: Session, user: UserCreate, is_admin_creator: bool = False):
+async def create_user(db: Session, user: UserCreate, is_admin_creator: bool = False):
     if user.is_admin and not is_admin_creator:
         raise HTTPException(status_code=403, detail="Only admin can create admins")
     
@@ -28,6 +30,17 @@ def create_user(db: Session, user: UserCreate, is_admin_creator: bool = False):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
+    # Отправляем СМС с кодом верификации, если пользователь не администратор
+    if verification_code:
+        try:
+            await send_sms(db_user.phone, f"Ваш код верификации: {verification_code}")  # Уберите test=True после тестирования
+            print(f"SMS sent to {db_user.phone} with code: {verification_code}")
+        except HTTPException as e:
+            print(f"Failed to send SMS to {db_user.phone}: {e.detail}")
+            # Продолжаем, так как код сохранен в БД
+            pass
+
     return db_user
 
 def authenticate_user(db: Session, phone: str, code: str):
@@ -38,19 +51,28 @@ def authenticate_user(db: Session, phone: str, code: str):
     db.commit()
     return user
 
-def resend_verification_code(db: Session, phone: str):
+async def resend_verification_code(db: Session, phone: str):
     user = db.query(User).filter(User.phone == phone).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.verification_code = str(randint(1000, 9999))
     db.commit()
-    # Здесь можно добавить отправку SMS
+
+    # Отправляем СМС с новым кодом
+    try:
+        await send_sms(user.phone, f"Ваш код верификации: {user.verification_code}")  # Уберите test=True после тестирования
+        print(f"SMS sent to {user.phone} with code: {user.verification_code}")
+    except HTTPException as e:
+        print(f"Failed to send SMS to {user.phone}: {e.detail}")
+        raise e
+
     return user
 
 def get_current_user(db: Session, token: str):
-    from app.core.security import decode_access_token
     payload = decode_access_token(token)
     if not payload:
         return None
     user_id = payload.get("sub")
+    if not user_id:
+        return None
     return db.query(User).filter(User.id == user_id).first()
