@@ -5,6 +5,10 @@ from app.core.security import get_password_hash, verify_password, create_access_
 from random import randint
 from fastapi import HTTPException
 from app.utils.sms import send_sms
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def create_user(db: Session, user: UserCreate, is_admin_creator: bool = False):
     if user.is_admin and not is_admin_creator:
@@ -34,10 +38,10 @@ async def create_user(db: Session, user: UserCreate, is_admin_creator: bool = Fa
     # Отправляем СМС с кодом верификации, если пользователь не администратор
     if verification_code:
         try:
-            await send_sms(db_user.phone, f"Ваш код верификации: {verification_code}")  # Уберите test=True после тестирования
-            print(f"SMS sent to {db_user.phone} with code: {verification_code}")
+            await send_sms(db_user.phone, verification_code)
+            logger.info(f"SMS sent to {db_user.phone} with code: {verification_code}")
         except HTTPException as e:
-            print(f"Failed to send SMS to {db_user.phone}: {e.detail}")
+            logger.error(f"Failed to send SMS to {db_user.phone}: {e.detail}")
             # Продолжаем, так как код сохранен в БД
             pass
 
@@ -60,10 +64,10 @@ async def resend_verification_code(db: Session, phone: str):
 
     # Отправляем СМС с новым кодом
     try:
-        await send_sms(user.phone, f"Ваш код верификации: {user.verification_code}")  # Уберите test=True после тестирования
-        print(f"SMS sent to {user.phone} with code: {user.verification_code}")
+        await send_sms(user.phone, user.verification_code)
+        logger.info(f"SMS sent to {user.phone} with code: {user.verification_code}")
     except HTTPException as e:
-        print(f"Failed to send SMS to {user.phone}: {e.detail}")
+        logger.error(f"Failed to send SMS to {user.phone}: {e.detail}")
         raise e
 
     return user

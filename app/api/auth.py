@@ -8,6 +8,10 @@ from app.db.models import User as UserModel
 from app.core.security import create_access_token
 from random import randint
 from app.utils.sms import send_sms
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -23,10 +27,10 @@ async def login(phone: str, db: Session = Depends(get_db)):
     
     # Отправляем СМС с кодом
     try:
-        await send_sms(phone, f"Ваш код верификации: {user.verification_code}")  # Уберите test=True после тестирования
-        print(f"User login attempt: Phone: {phone}, User ID: {user.id}, Verification Code: {user.verification_code}")
+        await send_sms(phone, user.verification_code)
+        logger.info(f"User login attempt: Phone: {phone}, User ID: {user.id}, Verification Code: {user.verification_code}")
     except HTTPException as e:
-        print(f"Failed to send SMS to {phone}: {e.detail}")
+        logger.error(f"Failed to send SMS to {phone}: {e.detail}")
         raise e
 
     return {
@@ -65,8 +69,6 @@ async def resend_code(phone: str, db: Session = Depends(get_db)):
     
     await resend_verification_code(db, phone)
     
-    # Выводим информацию в консоль после генерации нового кода
-    user = db.query(UserModel).filter(UserModel.phone == phone).first()
-    print(f"User resend code attempt: Phone: {phone}, User ID: {user.id}, Verification Code: {user.verification_code}")
+    logger.info(f"User resend code attempt: Phone: {phone}, User ID: {user.id}, Verification Code: {user.verification_code}")
     
     return {"status": "success", "message": "Code resent"}
