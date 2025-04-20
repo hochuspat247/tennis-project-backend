@@ -7,9 +7,12 @@ from app.db.models import User as UserModel
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
+@router.get("/me", response_model=User)
+def get_current_user_profile(current_user: UserModel = Depends(get_current_active_user)):
+    return current_user
+
 @router.get("/{user_id}", response_model=User)
 def get_profile(user_id: int, db: Session = Depends(get_db), current_user: UserModel = Depends(get_current_active_user)):
-    # Проверяем, имеет ли текущий пользователь доступ к запрашиваемому профилю
     if current_user.id != user_id and current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions to view this profile")
     
@@ -22,7 +25,7 @@ def get_profile(user_id: int, db: Session = Depends(get_db), current_user: UserM
 @router.patch("/{user_id}", response_model=User)
 def update_profile(
     user_id: int,
-    updated_data: UserUpdate,  # заменил тут
+    updated_data: UserUpdate,
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_active_user)
 ):

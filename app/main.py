@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api import auth, bookings, users, courts, profile
+from app.api import auth, bookings, users, courts, profile, tables  # Добавляем tables
 from app.db.base import Base
 from app.db.session import engine
 from dotenv import load_dotenv
@@ -24,3 +24,4 @@ app.include_router(bookings.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(courts.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
+app.include_router(tables.router, prefix="/api")  # Добавляем новый роутер
