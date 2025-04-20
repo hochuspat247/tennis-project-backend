@@ -4,35 +4,21 @@ from app.schemas.booking import BookingCreate, BookingAvailability
 from datetime import datetime, timedelta
 from fastapi import HTTPException
 from typing import Optional, List
-from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
-from zoneinfo import ZoneInfo
-
-def force_msk(dt: datetime) -> datetime:
-    """
-    Конвертирует время в MSK, сохраняя значение как наивное (без tzinfo).
-    Если dt не содержит tzinfo, предполагается, что оно уже в MSK.
-    """
-    msk_tz = ZoneInfo("Europe/Moscow")
-    if dt.tzinfo:
-        dt = dt.astimezone(msk_tz)
-    return dt.replace(tzinfo=None)
 
 def create_booking(db: Session, booking: BookingCreate, user_id: int, is_admin: bool) -> BookingModel:
     print(f"Полученные данные бронирования: {booking.dict()}")
-    # Приводим входящие даты к МСК, игнорируя tzinfo
-    booking.start_time = force_msk(booking.start_time)
-    booking.end_time = force_msk(booking.end_time)
-
+    # Предполагаем, что start_time и end_time уже в MSK и наивные (без tzinfo)
     start_naive = booking.start_time
     end_naive = booking.end_time
 
+    # Проверка, что бронирование в одном дне
     if start_naive.date() != end_naive.date():
         raise ValueError("Бронирование не может пересекать полночь. Начало и конец должны быть в одном дне")
 
-    # Текущее время в МСК как наивное значение
-    now_msk = datetime.now(ZoneInfo("Europe/Moscow")).replace(tzinfo=None)
-    if start_naive <= now_msk:
+    # Текущее время (предполагаем MSK)
+    now = datetime.now()
+    if start_naive <= now:
         raise ValueError("Время начала бронирования должно быть в будущем")
     if end_naive <= start_naive:
         raise ValueError("Время окончания должно быть позже времени начала")
@@ -49,7 +35,7 @@ def create_booking(db: Session, booking: BookingCreate, user_id: int, is_admin: 
         .all()
     )
     existing_bookings_naive = [
-        (b.start_time.replace(tzinfo=None), b.end_time.replace(tzinfo=None))
+        (b.start_time, b.end_time)
         for b in existing_bookings
     ]
     print(f"Проверка доступности для court_id={booking.court_id}, start_time={start_naive}, end_time={end_naive}")
@@ -130,7 +116,7 @@ def get_availability(db: Session, court_id: int, date: str, is_admin: bool = Fal
     while current_time < end_of_day:
         slot_end = current_time + timedelta(hours=1)
         booked = any(
-            b.start_time.replace(tzinfo=None) < slot_end and b.end_time.replace(tzinfo=None) > current_time 
+            b.start_time < slot_end and b.end_time > current_time 
             for b in bookings
         )
         slot = BookingAvailability(
@@ -140,7 +126,7 @@ def get_availability(db: Session, court_id: int, date: str, is_admin: bool = Fal
             name=next(
                 (f"{b.user.first_name.strip()} {b.user.last_name[0] if b.user.last_name else ''}.".strip()
                  for b in bookings
-                 if b.start_time.replace(tzinfo=None) < slot_end and b.end_time.replace(tzinfo=None) > current_time),
+                 if b.start_time < slot_end and b.end_time > current_time),
                 None
             ) if booked and is_admin else None
         )
