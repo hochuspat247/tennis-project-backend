@@ -57,7 +57,6 @@ def get_availability(
             )
             .all()
         )
-        print(f"📋 Найдено бронирований: {[(b.start_time, b.end_time) for b in bookings]}")
     except Exception as e:
         print(f"‼️ Ошибка при запросе к базе: {e}")
         raise HTTPException(status_code=500, detail=f"DB query failed: {str(e)}")

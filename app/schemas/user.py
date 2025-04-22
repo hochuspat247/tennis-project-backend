@@ -23,9 +23,11 @@ class User(UserBase):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str  # Добавляем refresh_token
     token_type: str
     role: str
     user_id: int
+    expires_in: Optional[int] = None  # Добавляем expires_in (опционально)
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None

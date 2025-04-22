@@ -73,10 +73,11 @@ def verify_user(phone: str, code: str, db: Session = Depends(get_db)):
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
     return {
         "access_token": access_token,
-        "refresh_token": refresh_token,  # Добавляем рефреш-токен
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "role": user.role,
-        "user_id": user.id
+        "user_id": user.id,
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60  # Добавляем время жизни в секундах
     }
 
 @router.post("/refresh")
@@ -94,7 +95,11 @@ async def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
         
         # Создаём новый access-токен
         access_token = create_access_token(data={"sub": user_id})
-        return {"access_token": access_token, "token_type": "bearer"}
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60  # Добавляем время жизни
+        }
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
